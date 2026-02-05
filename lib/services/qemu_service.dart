@@ -61,6 +61,9 @@ class QemuService {
     for (final pf in vm.netConfig.portForwards) {
       netArgs += ',$pf';
     }
+    for (final gf in vm.netConfig.guestForwards) {
+      netArgs += ',$gf';
+    }
     args.addAll(['-netdev', netArgs]);
     args.addAll(['-device', 'virtio-net-pci,netdev=${vm.netConfig.id}']);
 

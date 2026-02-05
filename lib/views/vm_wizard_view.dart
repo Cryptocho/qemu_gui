@@ -24,10 +24,16 @@ class _VMWizardViewState extends State<VMWizardView> {
   String? _diskPath;
   String? _isoPath;
   late List<PortForward> _portForwards;
+  late List<GuestForward> _guestForwards;
 
   final _hostPortController = TextEditingController();
   final _guestPortController = TextEditingController();
   NetProtocol _selectedProtocol = NetProtocol.tcp;
+
+  final _gfGuestIpController = TextEditingController(text: '10.0.2.100');
+  final _gfGuestPortController = TextEditingController();
+  final _gfHostIpController = TextEditingController(text: '127.0.0.1');
+  final _gfHostPortController = TextEditingController();
 
   @override
   void initState() {
@@ -43,6 +49,7 @@ class _VMWizardViewState extends State<VMWizardView> {
     _diskPath = vm?.disks.isNotEmpty == true ? vm?.disks.first.path : null;
     _isoPath = vm?.isoPath;
     _portForwards = vm != null ? List.from(vm.netConfig.portForwards) : [];
+    _guestForwards = vm != null ? List.from(vm.netConfig.guestForwards) : [];
   }
 
   void _addPortForward() {
@@ -53,6 +60,26 @@ class _VMWizardViewState extends State<VMWizardView> {
         _portForwards.add(PortForward(protocol: _selectedProtocol, hostPort: hp, guestPort: gp));
         _hostPortController.clear();
         _guestPortController.clear();
+      });
+    }
+  }
+
+  void _addGuestForward() {
+    final gp = int.tryParse(_gfGuestPortController.text);
+    final hp = int.tryParse(_gfHostPortController.text);
+    final gIp = _gfGuestIpController.text;
+    final hIp = _gfHostIpController.text;
+
+    if (gp != null && hp != null && gIp.isNotEmpty && hIp.isNotEmpty) {
+      setState(() {
+        _guestForwards.add(GuestForward(
+          guestIp: gIp,
+          guestPort: gp,
+          hostIp: hIp,
+          hostPort: hp,
+        ));
+        _gfGuestPortController.clear();
+        _gfHostPortController.clear();
       });
     }
   }
@@ -68,7 +95,11 @@ class _VMWizardViewState extends State<VMWizardView> {
       cores: int.tryParse(_coresController.text) ?? 4,
       disks: _diskPath != null ? [DiskImage(path: _diskPath!)] : [],
       isoPath: _isoPath,
-      netConfig: NetConfig(id: 'n0', portForwards: _portForwards),
+      netConfig: NetConfig(
+        id: 'n0',
+        portForwards: _portForwards,
+        guestForwards: _guestForwards,
+      ),
     );
 
     if (widget.existingVM != null) {
@@ -245,6 +276,55 @@ class _VMWizardViewState extends State<VMWizardView> {
                         iconSize: 18,
                         icon: const Icon(Icons.delete),
                         onPressed: () => setState(() => _portForwards.removeAt(index)),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            _buildSectionHeader('Guest Forwarding (Guest -> Host)'),
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8.0),
+              child: Text(
+                'Forward guest connections to host services.',
+                style: TextStyle(fontSize: 11),
+              ),
+            ),
+            Row(
+              children: [
+                Expanded(child: TextField(controller: _gfGuestIpController, decoration: const InputDecoration(labelText: 'Guest IP'))),
+                const SizedBox(width: 8),
+                Expanded(child: TextField(controller: _gfGuestPortController, decoration: const InputDecoration(labelText: 'Port'))),
+                const SizedBox(width: 16),
+                const Icon(Icons.arrow_forward, size: 16),
+                const SizedBox(width: 16),
+                Expanded(child: TextField(controller: _gfHostIpController, decoration: const InputDecoration(labelText: 'Host IP'))),
+                const SizedBox(width: 8),
+                Expanded(child: TextField(controller: _gfHostPortController, decoration: const InputDecoration(labelText: 'Port'))),
+                IconButton(icon: const Icon(Icons.add, size: 20), onPressed: _addGuestForward),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _guestForwards.length,
+              itemBuilder: (context, index) {
+                final gf = _guestForwards[index];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Theme.of(context).colorScheme.outline),
+                    ),
+                    child: ListTile(
+                      dense: true,
+                      title: Text(gf.toString(), style: const TextStyle(fontSize: 13)),
+                      trailing: IconButton(
+                        iconSize: 18,
+                        icon: const Icon(Icons.delete),
+                        onPressed: () => setState(() => _guestForwards.removeAt(index)),
                       ),
                     ),
                   ),
