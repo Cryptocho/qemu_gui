@@ -1,6 +1,6 @@
 pkgname=qemu_gui
 pkgver=0.1.1
-pkgrel=1
+pkgrel=2
 pkgdesc="A Flutter-based qemu manager"
 arch=('x86_64')
 url="https://github.com/Cryptocho/${pkgname}"

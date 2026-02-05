@@ -178,13 +178,27 @@ class _VMWizardViewState extends State<VMWizardView> {
               child: ListTile(
                 dense: true,
                 title: Text(_isoPath ?? 'No ISO selected (optional)', style: const TextStyle(fontSize: 13)),
-                trailing: ElevatedButton(
-                  style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12), minimumSize: const Size(0, 32)),
-                  onPressed: () async {
-                    final result = await FilePicker.platform.pickFiles();
-                    if (result != null) setState(() => _isoPath = result.files.single.path);
-                  },
-                  child: const Text('Select ISO', style: TextStyle(fontSize: 12)),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12), minimumSize: const Size(0, 32)),
+                      onPressed: () async {
+                        final result = await FilePicker.platform.pickFiles();
+                        if (result != null) setState(() => _isoPath = result.files.single.path);
+                      },
+                      child: const Text('Select ISO', style: TextStyle(fontSize: 12)),
+                    ),
+                    if (_isoPath != null) ...[
+                      const SizedBox(width: 8),
+                      IconButton(
+                        iconSize: 18,
+                        icon: const Icon(Icons.clear),
+                        onPressed: () => setState(() => _isoPath = null),
+                        tooltip: 'Remove ISO',
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
