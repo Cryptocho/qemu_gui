@@ -1,6 +1,6 @@
 pkgname=qemu_gui
-pkgver=0.1.1
-pkgrel=2
+pkgver=0.1.2
+pkgrel=1
 pkgdesc="A Flutter-based qemu manager"
 arch=('x86_64')
 url="https://github.com/Cryptocho/${pkgname}"
@@ -23,7 +23,7 @@ EOF
 
   install -d "${pkgdir}/usr/share/applications"
   echo "[Desktop Entry]
-Version=0.1.1
+Version=0.1.2
 Name=QEMU GUI
 Comment=Flutter-based QEMU manager
 Exec=/usr/bin/${pkgname} %U
