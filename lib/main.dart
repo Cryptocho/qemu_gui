@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'theme/arc_dark_theme.dart';
 import 'services/settings_service.dart';
 import 'services/qemu_service.dart';
 import 'services/vm_service.dart';
@@ -79,13 +80,7 @@ class QemuGuiApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'QEMU GUI',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
+      theme: ArcDarkTheme.theme,
       initialRoute: '/',
       onGenerateRoute: (settings) {
         if (settings.name == '/wizard') {

@@ -44,7 +44,10 @@ class _SettingsViewState extends State<SettingsView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(
+        toolbarHeight: 40,
+        title: const Text('Settings'),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
@@ -53,14 +56,24 @@ class _SettingsViewState extends State<SettingsView> {
             decoration: const InputDecoration(labelText: 'QEMU System Path'),
           ),
           const SizedBox(height: 8),
-          Text('Version: $_qemuVersion', style: Theme.of(context).textTheme.bodySmall),
+          Text(
+            'Version: $_qemuVersion',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                ),
+          ),
           const SizedBox(height: 16),
           TextField(
             controller: _qemuImgPathController,
             decoration: const InputDecoration(labelText: 'QEMU Img Path'),
           ),
           const SizedBox(height: 8),
-          Text('Version: $_qemuImgVersion', style: Theme.of(context).textTheme.bodySmall),
+          Text(
+            'Version: $_qemuImgVersion',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                ),
+          ),
           const SizedBox(height: 16),
           SwitchListTile(
             title: const Text('KVM Available'),

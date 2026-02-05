@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
@@ -18,6 +17,8 @@ class _ImageManagerViewState extends State<ImageManagerView> {
   String _imageInfo = '';
   final _nameController = TextEditingController();
   final _sizeController = TextEditingController(text: '20G');
+  String _selectedFormat = 'qcow2';
+  final List<String> _formats = ['qcow2', 'raw', 'vmdk', 'vdi', 'qed'];
 
   Future<void> _pickImage() async {
     final result = await FilePicker.platform.pickFiles();
@@ -44,10 +45,10 @@ class _ImageManagerViewState extends State<ImageManagerView> {
     final dir = await FilePicker.platform.getDirectoryPath();
     if (dir == null || _nameController.text.isEmpty) return;
 
-    final path = p.join(dir, _nameController.text + (p.extension(_nameController.text).isEmpty ? '.qcow2' : ''));
+    final path = p.join(dir, _nameController.text + (p.extension(_nameController.text).isEmpty ? '.$_selectedFormat' : ''));
     final imageService = ImageService(settings.qemuImgPath);
-    
-    final result = await imageService.createImg(path, _sizeController.text);
+
+    final result = await imageService.createImg(path, _sizeController.text, format: _selectedFormat);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
       setState(() {
@@ -60,7 +61,10 @@ class _ImageManagerViewState extends State<ImageManagerView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Image Manager')),
+      appBar: AppBar(
+        toolbarHeight: 40,
+        title: const Text('Image Manager'),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -77,11 +81,23 @@ class _ImageManagerViewState extends State<ImageManagerView> {
             if (_imageInfo.isNotEmpty) ...[
               const SizedBox(height: 16),
               const Text('Image Info:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
               Container(
-                padding: const EdgeInsets.all(8),
-                color: Colors.black26,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainer,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Theme.of(context).colorScheme.outline),
+                ),
                 width: double.infinity,
-                child: Text(_imageInfo, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                child: Text(
+                  _imageInfo,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
               ),
             ],
             const Divider(height: 48),
@@ -89,11 +105,33 @@ class _ImageManagerViewState extends State<ImageManagerView> {
             const SizedBox(height: 8),
             TextField(
               controller: _nameController,
-              decoration: const InputDecoration(labelText: 'Filename (e.g. disk.qcow2)', hintText: 'my_disk.qcow2'),
+              decoration: const InputDecoration(labelText: 'Filename (without extension)', hintText: 'my_disk'),
             ),
-            TextField(
-              controller: _sizeController,
-              decoration: const InputDecoration(labelText: 'Size (e.g. 20G, 500M)', hintText: '20G'),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _sizeController,
+                    decoration: const InputDecoration(labelText: 'Size (e.g. 20G, 500M)', hintText: '20G'),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _selectedFormat,
+                    decoration: const InputDecoration(labelText: 'Format'),
+                    items: const [
+                      DropdownMenuItem(value: 'qcow2', child: Text('qcow2 (Recommended)')),
+                      DropdownMenuItem(value: 'raw', child: Text('raw (Performance)')),
+                      DropdownMenuItem(value: 'vmdk', child: Text('vmdk (VMware)')),
+                      DropdownMenuItem(value: 'vdi', child: Text('vdi (VirtualBox)')),
+                      DropdownMenuItem(value: 'qed', child: Text('qed (Enhanced)')),
+                    ],
+                    onChanged: (v) => setState(() => _selectedFormat = v!),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             ElevatedButton(onPressed: _createImage, child: const Text('Create & Select')),
