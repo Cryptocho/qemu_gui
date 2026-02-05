@@ -33,7 +33,7 @@ class QemuService {
     return await File('/dev/kvm').exists();
   }
 
-  List<String> buildArgs(VMConfig vm) {
+  List<String> buildArgs(VMConfig vm, {bool headless = false}) {
     final args = <String>[];
     args.addAll(['-machine', vm.machine]);
     if (vm.enableKvm) args.add('-enable-kvm');
@@ -41,7 +41,7 @@ class QemuService {
     args.addAll(['-smp', vm.cores.toString()]);
     args.addAll(['-cpu', vm.cpuModel]);
     args.addAll(['-vga', vm.vga]);
-    args.addAll(['-display', vm.display]);
+    args.addAll(['-display', headless ? 'none' : vm.display]);
     args.addAll(['-boot', 'order=${vm.bootOrder}']);
 
     if (vm.useUsbTablet) {
@@ -67,8 +67,13 @@ class QemuService {
     return args;
   }
 
-  Future<Process> startVM(String qemuPath, VMConfig vm) async {
-    final args = buildArgs(vm);
+  String buildCommandString(String qemuPath, VMConfig vm, {bool headless = false}) {
+    final args = buildArgs(vm, headless: headless);
+    return '$qemuPath ${args.map((a) => a.contains(' ') ? '"$a"' : a).join(' ')}';
+  }
+
+  Future<Process> startVM(String qemuPath, VMConfig vm, {bool headless = false}) async {
+    final args = buildArgs(vm, headless: headless);
     return await Process.start(qemuPath, args);
   }
 }

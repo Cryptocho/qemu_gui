@@ -18,7 +18,6 @@ class _ImageManagerViewState extends State<ImageManagerView> {
   final _nameController = TextEditingController();
   final _sizeController = TextEditingController(text: '20G');
   String _selectedFormat = 'qcow2';
-  final List<String> _formats = ['qcow2', 'raw', 'vmdk', 'vdi', 'qed'];
 
   Future<void> _pickImage() async {
     final result = await FilePicker.platform.pickFiles();

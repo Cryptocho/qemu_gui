@@ -8,10 +8,27 @@ class VMService extends ChangeNotifier {
   static const _key = 'vms';
   List<VMConfig> _vms = [];
   final Map<String, Process> _runningProcesses = {};
+  final Map<String, List<String>> _logs = {};
 
   List<VMConfig> get vms => _vms;
 
   bool isVMRunning(String id) => _runningProcesses.containsKey(id);
+
+  List<String> getLogs(String vmId) => _logs[vmId] ?? [];
+
+  void clearLogs(String vmId) {
+    _logs[vmId] = [];
+    notifyListeners();
+  }
+
+  void _addLog(String vmId, String line) {
+    _logs[vmId] ??= [];
+    _logs[vmId]!.add('[${DateTime.now().toIso8601String()}] $line');
+    if (_logs[vmId]!.length > 1000) {
+      _logs[vmId]!.removeAt(0);
+    }
+    notifyListeners();
+  }
 
   Future<void> loadVMs() async {
     final prefs = await SharedPreferences.getInstance();
@@ -45,10 +62,29 @@ class VMService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void registerProcess(String vmId, Process process) {
+  void registerProcess(String vmId, Process process, {String? command}) {
     _runningProcesses[vmId] = process;
+    if (command != null) {
+      _addLog(vmId, 'Starting VM with command: $command');
+    }
     notifyListeners();
-    process.exitCode.then((_) {
+
+    process.stdout
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen((line) {
+      if (line.trim().isNotEmpty) _addLog(vmId, 'STDOUT: $line');
+    });
+
+    process.stderr
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen((line) {
+      if (line.trim().isNotEmpty) _addLog(vmId, 'STDERR: $line');
+    });
+
+    process.exitCode.then((code) {
+      _addLog(vmId, 'Process exited with code $code');
       _runningProcesses.remove(vmId);
       notifyListeners();
     });

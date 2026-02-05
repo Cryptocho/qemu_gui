@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:path/path.dart' as p;
 import '../services/vm_service.dart';
@@ -9,6 +10,86 @@ import '../services/settings_service.dart';
 
 class HomeView extends StatelessWidget {
   const HomeView({super.key});
+
+  void _showLogs(BuildContext context, VMConfig vm, VMService vmService) {
+    final scrollController = ScrollController();
+    showDialog(
+      context: context,
+      builder: (context) => ChangeNotifierProvider.value(
+        value: vmService,
+        child: Consumer<VMService>(
+          builder: (context, svc, _) {
+            final logs = svc.getLogs(vm.id);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (scrollController.hasClients) {
+                scrollController.jumpTo(scrollController.position.maxScrollExtent);
+              }
+            });
+            return AlertDialog(
+              title: Row(
+                children: [
+                  Text('Logs: ${vm.name}', style: const TextStyle(fontSize: 16)),
+                  const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.copy, size: 18),
+                      tooltip: 'Copy all logs',
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: logs.join('''
+''')));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Logs copied to clipboard'), duration: Duration(seconds: 1)),
+                        );
+                      },
+                    ),
+                ],
+              ),
+              content: SizedBox(
+                width: 700,
+                height: 500,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E1E1E),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: Colors.white12),
+                        ),
+                        child: ListView.builder(
+                          controller: scrollController,
+                          itemCount: logs.length,
+                          itemBuilder: (context, index) => SelectableText(
+                            logs[index],
+                            style: const TextStyle(
+                              color: Color(0xFFD4D4D4),
+                              fontFamily: 'monospace',
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => svc.clearLogs(vm.id),
+                  child: const Text('Clear Logs'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
 
   Future<void> _showDeleteConfirmation(BuildContext context, VMConfig vm, VMService vmService) async {
     bool deleteImages = false;
@@ -169,7 +250,7 @@ class HomeView extends StatelessWidget {
                               visualDensity: VisualDensity.compact,
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
-                              iconSize: 16,
+                              iconSize: 22,
                               icon: Icon(isRunning ? Icons.stop : Icons.play_arrow),
                               color: isRunning ? Colors.red : null,
                               onPressed: () async {
@@ -180,8 +261,9 @@ class HomeView extends StatelessWidget {
                                 final qemuService = context.read<QemuService>();
                                 final settings = context.read<Settings>();
                                 try {
+                                  final cmd = qemuService.buildCommandString(settings.qemuSystemPath, vm);
                                   final process = await qemuService.startVM(settings.qemuSystemPath, vm);
-                                  vmService.registerProcess(vm.id, process);
+                                  vmService.registerProcess(vm.id, process, command: cmd);
                                   if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(content: Text('Starting ${vm.name}...')),
@@ -196,12 +278,53 @@ class HomeView extends StatelessWidget {
                                 }
                               },
                             ),
+                            if (!isRunning) ...[
+                              const SizedBox(width: 8),
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                iconSize: 22,
+                                icon: const Icon(Icons.visibility_off),
+                                tooltip: 'Start Headless',
+                                onPressed: () async {
+                                  final qemuService = context.read<QemuService>();
+                                  final settings = context.read<Settings>();
+                                  try {
+                                    final cmd = qemuService.buildCommandString(settings.qemuSystemPath, vm, headless: true);
+                                    final process = await qemuService.startVM(settings.qemuSystemPath, vm, headless: true);
+                                    vmService.registerProcess(vm.id, process, command: cmd);
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Starting ${vm.name} (headless)...')),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Error: $e')),
+                                      );
+                                    }
+                                  }
+                                },
+                              ),
+                            ],
                             const SizedBox(width: 8),
                             IconButton(
                               visualDensity: VisualDensity.compact,
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                               iconSize: 18,
+                              icon: const Icon(Icons.receipt_long),
+                              tooltip: 'Logs',
+                              onPressed: () => _showLogs(context, vm, vmService),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              iconSize: 22,
                               icon: const Icon(Icons.delete),
                               onPressed: () => _showDeleteConfirmation(context, vm, vmService),
                             ),

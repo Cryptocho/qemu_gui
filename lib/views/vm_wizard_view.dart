@@ -189,6 +189,13 @@ class _VMWizardViewState extends State<VMWizardView> {
               ),
             ),
             _buildSectionHeader('Network (Port Mapping)'),
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8.0),
+              child: Text(
+                'Note: Avoid using privileged ports (1-1024) for the host.',
+                style: TextStyle(fontSize: 11, color: Colors.orange),
+              ),
+            ),
             Row(
               children: [
                 Expanded(child: TextField(controller: _hostPortController, decoration: const InputDecoration(labelText: 'Host Port'))),
