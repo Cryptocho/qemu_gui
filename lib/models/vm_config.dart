@@ -1,5 +1,6 @@
 import 'disk_image.dart';
 import 'net_config.dart';
+import 'shared_folder.dart';
 
 class VMConfig {
   final String id;
@@ -16,6 +17,10 @@ class VMConfig {
   final List<DiskImage> disks;
   final NetConfig netConfig;
   final bool useUsbTablet;
+  final List<SharedFolder> sharedFolders;
+  final bool enableEdid; // advertise a custom preferred mode via EDID
+  final int xres;
+  final int yres;
 
   VMConfig({
     required this.id,
@@ -32,6 +37,10 @@ class VMConfig {
     this.disks = const [],
     required this.netConfig,
     this.useUsbTablet = true,
+    this.sharedFolders = const [],
+    this.enableEdid = false,
+    this.xres = 1920,
+    this.yres = 1080,
   });
 
   Map<String, dynamic> toJson() => {
@@ -49,6 +58,10 @@ class VMConfig {
         'disks': disks.map((e) => e.toJson()).toList(),
         'netConfig': netConfig.toJson(),
         'useUsbTablet': useUsbTablet,
+        'sharedFolders': sharedFolders.map((e) => e.toJson()).toList(),
+        'enableEdid': enableEdid,
+        'xres': xres,
+        'yres': yres,
       };
 
   factory VMConfig.fromJson(Map<String, dynamic> json) => VMConfig(
@@ -68,5 +81,11 @@ class VMConfig {
             .toList(),
         netConfig: NetConfig.fromJson(json['netConfig']),
         useUsbTablet: json['useUsbTablet'] ?? true,
+        sharedFolders: (json['sharedFolders'] as List? ?? [])
+            .map((e) => SharedFolder.fromJson(e))
+            .toList(),
+        enableEdid: json['enableEdid'] ?? false,
+        xres: json['xres'] ?? 1920,
+        yres: json['yres'] ?? 1080,
       );
 }

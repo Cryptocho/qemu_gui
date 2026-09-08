@@ -1,0 +1,405 @@
+== Summary ==
+
+Introduce a number of changes to the internal implementation of QMP to simplify maintainability and enable features such as asynchronous command completion and rich error reporting.  Minimize protocol-visible changes as much as possible.  Provide a C library interface to QMP such that can be used to write thorough in-tree unit tests.
+
+== Owner ==
+
+* '''Name:''' [[User:AnthonyLiguori|Anthony Liguori]]
+* '''Email:''' anthony@codemonkey.ws
+
+== Summary ==
+
+QMP has evolved from the human monitor code and has inherited a number of the deficiencies of the human monitor as a result.  In particular, error reporting and asynchronous commands really demonstrate the historic flaws in the human monitor.  This spec describes the types of changes that are needed to decouple QMP from the human monitor and fix the deficiencies that are currently present.
+
+== Implementation ==
+
+QAPI uses a schema/IDL written in JSON to automatically generate the types and
+marshalling information for QMP commands.  It is used to generate both the
+server side marshalling interfaces and a client library.
+
+A typical function definition looks like this:
+
+ ##
+ # @change:
+ #
+ # This command is multiple commands multiplexed together.  Generally speaking,
+ # it should not be used in favor of the single purpose alternatives such as
+ # @change-vnc-listen, @change-vnc-password, and @change-blockdev.
+ #
+ # @device: This is normally the name of a block device but it may also be 'vnc'.
+ #          when it's 'vnc', then sub command depends on @target
+ #
+ # @target: If @device is a block device, then this is the new filename.
+ #          If @device is 'vnc', then if the value 'password' selects the vnc
+ #          change password command.   Otherwise, this specifies a new server URI
+ #          address to listen to for VNC connections.
+ #
+ # @arg:    If @device is a block device, then this is an optional format to open
+ #          the device with.
+ #          If @device is 'vnc' and @target is 'password', this is the new VNC
+ #          password to set.  If this argument is an empty string, then no future
+ #          logins will be allowed.
+ #
+ # Returns: Nothing on success.
+ #          If @device is not a valid block device, DeviceNotFound
+ #          If @format is not a valid block format, InvalidBlockFormat
+ #          If the new block device is encrypted, DeviceEncrypted.  Note that
+ #          if this error is returned, the device has been opened successfully
+ #          and an additional call to @block_passwd is required to set the
+ #          device's password.  The behavior of reads and writes to the block
+ #          device between when these calls are executed is undefined.
+ #
+ # Notes:  It is strongly recommended that this interface is not used especially
+ #         for changing block devices.
+ #
+ # Since: 0.14.0
+ ##
+ [ 'change', {'device': 'str', 'target': 'str', '*arg': 'str'}, 'none' ]
+
+The comments above the function are written in gtk-doc format and meant to be
+extracted to generate both protocol documentation and libqmp documentation.
+
+The first element of the list is the command name, in this case, 'change'.
+
+The second element of the list is a dictionary containing the arguments for the function.  The key is the argument name and the value is the type.  The type can be a string or a complex type (see section on Typing).  If the key is prefixed with a '*' then the argument is considered an optional argument.
+
+The final list element is the return type of the function.  'none' is a special type representing a void return value.
+
+== QMP Server ==
+
+This definition will generate the following signature in qemu/qmp.h:
+
+ void qmp_change(const char *device, const char *target, bool has_arg,
+                 const char *arg, Error **errp);
+
+Which is then implemented in the appropriate place in QEMU.  The optional
+arguments always are prefixed with a boolean argument to indicate whether the
+option has been specified.  The final argument is a pointer to an Error object
+in the fashion of GError.  The caller of this function will check for a
+non-NULL error object to determine if the function failed.  errp can be set to
+NULL if the caller does not care about failure.
+
+Currently, Error is roughly identical to QError with the exception that it only
+supports simple key/value arguments.
+
+== Complex Types ==
+
+Some commands take or return complex types.  It's usually a good idea to define
+complex types outside of the function definition.  An example of a command
+that returns a complex type is below:
+
+ ##
+ # @VersionInfo:
+ #
+ # A description of QEMU's version.
+ #
+ # @qemu.major:  The major version of QEMU
+ #
+ # @qemu.minor:  The minor version of QEMU
+ #
+ # @qemu.micro:  The micro version of QEMU.  By current convention, a micro
+ #               version of 50 signifies a development branch.  A micro version
+ #               greater than or equal to 90 signifies a release candidate for
+ #               the next minor version.  A micro version of less than 50
+ #               signifies a stable release.
+ #
+ # @package:     QEMU will always set this field to an empty string.  Downstream
+ #               versions of QEMU should set this to a non-empty string.  The
+ #               exact format depends on the downstream however it highly
+ #               recommended that a unique name is used.
+ #
+ # Since: 0.14.0
+ ##
+ { 'VersionInfo': {'qemu': {'major': 'int', 'minor': 'int', 'micro': 'int'},
+                   'package': 'str'} }
+
+ ##
+ # @query-version:
+ #
+ # Returns the current version of QEMU.
+ #
+ # Returns:  A @VersionInfo object describing the current version of QEMU.
+ #
+ # Since: 0.14.0
+ ##
+ [ 'query-version', {}, 'VersionInfo' ]
+
+The use of a dictionary instead of a list is an indication of a
+typedef.  Within QEMU,  This will generate the following code in
+qemu/qmp-types.h:
+
+ typedef struct VersionInfo
+ {
+     struct {
+         int64_t major;
+         int64_t minor;
+         int64_t micro;
+     } qemu;
+     const char *package;
+     struct VersionInfo *next;
+ } VersionInfo;
+
+The use of a next pointer is to enable support for returning lists of complex
+types.  The query-version command will generate the following signature:
+
+ // qemu/qmp-types.h
+ VersionInfo *qmp_alloc_version_info(void);
+ void qmp_free_version_info(VersionInfo *obj);
+
+ // qemu/qmp.h
+ VersionInfo *qmp_query_version(Error **errp);
+
+A typical implementation might look something like:
+
+ VersionInfo *qmp_query_version(Error **errp)
+ {
+     VersionInfo *info = qmp_alloc_version_info();
+     info->qemu.major = 0;
+     info->qemu.minor = 14;
+     info->qemu.micro = 92;
+     info->package = qemu_strdup(" (qemu-kvm)");
+     return info;
+ }
+
+== Optional Structure Members ==
+
+Optional structure members can be specified by using a '*' as a prefix to the
+member name.  For example:
+
+ ##
+ # @BlockDeviceInfo:
+ #
+ # Information about the backing device for a block device.
+ #
+ # @file: the filename of the backing device
+ #
+ # @ro: true if the backing device was open read-only
+ #
+ # @drv: the name of the block format used to open the backing dvice
+ #
+ # @backing_file: #optional the name of the backing file (for copy-on-write)
+ #
+ # @encrypted: true if the backing device is encrypted
+ #
+ # Since: 0.14.0
+ #
+ # Notes: This interface is only found in @BlockInfo.
+ ##
+ { 'BlockDeviceInfo': { 'file': 'str', 'ro': 'bool', 'drv': 'str',
+                        '*backing_file': 'str', 'encrypted': 'bool' } }
+
+A typical implementation may look like:
+
+ BlockDeviceInfo *qmp_query_block_device_info(const char *device, Error **errp)
+ {
+     BlockDeviceInfo *info;
+     BlockDriverState *bs;
+     Error *local_err = NULL;
+
+     bs = bdrv_find(device, &local_err);
+     if (local_err) {
+         error_propagate(errp, local_err);
+         return NULL;
+     }
+
+     info->file = qemu_strdup(bs->filename);
+     info->ro = bs->readonly;
+     info->drv = qemu_strdup(bs->drv);
+     info->encrypted = bs->encrypted;
+     if (bs->backing_file[0]) {
+         info->has_backing_file = true;
+         info->backing_file = qemu_strdup(info->backing_file);
+     }
+
+     return info;
+ }
+
+== Enumeration Types ==
+
+QAPI also supports enumeration types.  The following syntax is used:
+
+ { 'VirtioNetTxStrategy': ['bh', 'timer'] }
+
+A list of strings signifies a enumeration type.  The enumeration type will
+generate the following code in qemu/qmp-types.h:
+
+ typedef enum VirtioNetTxStrategy
+ {
+     VNTS_BH = 0,
+     VNTS_TIMER,
+ } VirtioNetTxStrategy;
+
+Any use of the type in QEMU or in libqmp will use the enumeration.  At the
+moment, the integer values of the enumeration are sent over the wire in order to
+better support languages like Python that don't have enumeration types.
+
+String to enumeration conversion functions will also be generated.
+
+ // qemu/qmp-types.h
+ VirtioNetTxStrategy qmp_virtio_net_tx_strategy_from_str(const char *str,
+                                                         Error **errp);
+ char *qmp_virtio_net_tx_strategy_to_str(VirtioNetTxStrategy value,
+                                         Error **errp);
+
+== Client Library ==
+
+A client library will also be generated that makes use of qmp-types.h.  The
+client library functions are very similar to the QEMU functions except they
+reside in libqmp.h, use a different prefix, and take a QmpSession argument.
+For instance, 'query-version' will generate:
+
+ VersionInfo *libqmp_query_version(QmpSession *sess, Error **errp);
+
+== Events ==
+
+QMP events today are broadcast at any point in time after ''qmp_capabilities'' is executed.  For QAPI, events are modeled after the Signal/Slot design pattern.  A signal represents an object that generates events.  Events contain a user supplied parameter and then zero or more event specific parameters.  A slot is a registered callback and user supplied parameter tuple.
+
+In the QMP schema, an event is registered much like a structure except the name is specified entirely in upper case.  For example:
+
+ { 'BLOCK_IO_ERROR': { 'action': 'str', 'device': 'str', 'operation': 'str' } }
+
+This will generate the following code:
+
+ // qemu/qmp-types.h
+ typedef void (BlockIoErrorFunc)(void *opaque, const char * action, const char * device, const char * operation);
+
+ typedef struct BlockIoErrorEvent {
+     QmpSignal *signal;
+     BlockIoErrorFunc *fn;
+ } BlockIoErrorEvent;
+
+The ''BlockIoErrorEvent'' structure is really just a thin wrapper around a QmpSignal pointer.  A pointer is used because the QmpSignal type is totally opaque.  This allows a common definition between libqmp and the QMP server.  The inclusion of the BlockIoErrorFunc pointer is purely for convenience as the signal functions are implemented as macros and this provides a mechanism to associate the callback type with the signal object.
+
+To interact with a signal in QEMU, a series of macros are provided that work with any signal type.  Here's an example of initializing, connecting to, and disconnecting from a signal:
+
+ static void block_io_error_cb(void *opaque, const char *action, const char *device, const char *operation)
+ {
+     printf("event - %s\n", action);
+ }
+
+ void test_event(void)
+ {
+     BlockIoErrorEvent event;
+     int handle;
+
+     signal_init(&event);
+
+     handle = signal_connect(&event, block_io_error_cb, NULL);
+     signal_notify(&event, "stop", "ide0-hd0", "write");
+     signal_disconnect(&event, handle);
+
+     signal_notify(&event, "report", "ide0-hd0", "read");
+
+     signal_unref(&event);
+ }
+
+This example will only print out "report" to stdout.  Another thing to note about signals is that they are reference counted.  The reference count only applies to the inner signal object.  The creator of the signal is responsible for managing the outer signal object's life cycle.
+
+== Events and QMP ==
+
+The code generator will generate the necessary marshaling functions to transport a signal over the wire.  In order to connect to a signal for it to be sent over the wire, a signal accessor needs to be defined.  The following is an example of the schema definition for a signal accessor:
+
+ // qemu/qmp-schema.json
+ [ 'get-block-io-error-event', {}, {}, 'BLOCK_IO_ERROR' ]
+
+A signal accessor can have any name and take any set of arguments that are appropriate.  What defines a signal accessor is the fact that it returns a signal type.
+
+The implementation in QEMU should return an appropriate signal type.  For instance:
+
+ static BlockIoErrorEvent qemu_block_io_error;
+
+ BlockIoErrorEvent *qmp_get_block_io_error_event(Error **errp)
+ {
+     static int event_init;
+     if (!event_init) {
+         event_init = 1;
+         signal_init(&qemu_block_io_error);
+     }
+     return &qemu_block_io_error;
+ }
+
+Over the wire, a signal is marshaled as a global handle.  This is an integer that is unique and bound to the current QMP session.  The global handle will be included in a new ''tag'' field present in the QMP event.  In order to disconnect a signal over QMP, a new QMP is introduced:
+
+ // qemu/qmp-schema.json
+ [ 'put-event', { 'tag': 'str' }, {}, 'none' ]
+
+The ''put-event'' function is used to disconnect from any signal type.  The libqmp interface for signals mirrors the QEMU interface.  Since libqmp never directly initializes a signal, signal_connect is unneeded (all signals  will be created by calling an appropriate signal accessor).  Below is an example of using a signal from libqmp:
+
+ static void block_io_error_cb(void *opaque, const char *action, const char *device, const char *operation)
+ {
+     QmpSession *sess = opaque;
+     libqmp_cont(sess, NULL);
+ }
+
+ void test_io_event(QmpSession *sess)
+ {
+     BlockIoErrorEvent *ev;
+     int handle;
+
+     ev = libqmp_get_block_io_error_event(sess, NULL);
+     handle = signal_connect(ev, block_io_error_cb, sess);
+     // do some other actions
+ }
+
+== QMP Server Discovery ==
+
+QAPI has a standard mechanism to discover QMP servers.  By default, a QMP
+session is always created in ~/.qemu/name-$name.sock or ~/.qemu/pid-$pid.sock.
+libqmp provides functions to enumerate the running guests and connect to a guest
+by name or pid.
+
+== HMP Conversion ==
+
+All HMP commands should be converted to use internal QMP commands.  This is currently achieved by modifying the HMP implementation to just call QMP commands.  In future releases, we'll modify HMP to use a schema for command parsing but for now it still uses the existing QObject interface.
+
+A typical implementation would like look:
+
+ // qemu/hmp.c
+
+ void hmp_info_version(Monitor *mon)
+ {
+     VersionInfo *info;
+
+     info = qmp_query_version(NULL);
+
+     monitor_printf(mon, "%" PRId64 ".%" PRId64 ".%" PRId64 "%s\n",
+                    info->qemu.major, info->qemu.minor, info->qemu.micro,
+                    info->package);
+
+     qmp_free_version_info(info);
+ }
+
+For HMP commands that don't have QMP equivalents today, new QMP functions will be added to support these commands.
+
+== Command Line Conversion (0.16 and above) ==
+
+All command line arguments should be handled in terms of invoking QMP commands.  A number of commands can be trivially converted today by simply introducing a QMP command and calling it through QAPI.  For instance, the ''-name'' parameter can be handled by adding a '''set-name''' QMP command and then calling this QMP function in the option handling code.
+
+Other command line arguments are required to be fully specified prior to invoking machine init.  For these commands, we need to split machine init to occur after the main loop is invoked such that we can run a monitor prior to doing machine init.
+
+== Merge Plan ==
+* 0.15
+** Full QMP parsing framework
+** Guest agent infrastructure
+** New QMP server
+* 1.0
+** Full documentation of all QMP commands
+** Full support for 0.14 QMP commands and events
+** libqmp interface
+** unit tests for all commands within reason
+** Non-CharDriverState QMP server
+* 1.next
+** Introduction of new QMP commands to cover remaining HMP functionality
+** Default QMP session with libqmp based discovery
+** libqmp as a shared library
+** conversion of all command line interfaces to use QMP interfaces
+** QMP-only construction mode
+** Schema definition of Errors
+
+== Status ==
+
+* http://repo.or.cz/w/qemu/aliguori.git glib
+* '''3/6/2011:''' Round 1 is on the ML
+* '''3/6/2011:''' Events are now implemented.  Merge work has now begun.
+* '''3/1/2011:''' All existing QMP commands are converted.  All HMP commands that have QMP equivalents are converted to use QMP.  A signal infrastructure is in place.  Work is under way to finish the server and client library implementations of signals.
+* https://github.com/shevek/qemu-java - Java client interface to QApi

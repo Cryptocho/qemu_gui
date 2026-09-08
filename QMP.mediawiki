@@ -1,0 +1,148 @@
+= QEMU Machine Protocol =
+
+The QEMU Machine Protocol (QMP) is a [http://www.json.org/ JSON]-based protocol which allows applications to control a QEMU instance.
+
+Features:
+
+* Lightweight, text-based, easy to parse data format
+* Asynchronous messages support (events)
+* Capabilities negotiation
+* API/ABI stability guarantees
+
+Please, also check the [http://git.qemu.org/?p=qemu.git;a=blob_plain;f=docs/interop/qmp-intro.txt;hb=HEAD QMP intro] file for more information.
+
+== Examples ==
+
+The first example explains some important details about QMP. The others are simpler and run on top of the first one.
+
+In all examples "C" stands for "Client" and "S" stands for "Server".
+
+=== Capabilities Negotiation ===
+
+When a new QMP connection is established, QMP sends its greeting message and enters ''capabilities negotiation'' mode. In this mode, only the qmp_capabilities command works. To exit ''capabilities negotiation'' mode and enter ''command mode'', the qmp_capabilities command must be issued:
+
+  S: {
+         "QMP": {
+             "version": {
+                 "qemu": {
+                     "micro": 0,
+                     "minor": 6,
+                     "major": 1
+                 },
+                 "package": ""
+             },
+             "capabilities": [
+             ]
+         }
+     }
+ C: { "execute": "qmp_capabilities" }
+ S: { "return": {}}
+
+The ''{ "return": {} }'' response is QMP's success response. An error response will contain the "error" keyword instead of "return".
+
+=== Eject a medium ===
+
+ C: { "execute": "eject", "arguments": { "device": "ide1-cd0" } }
+ S: { "return": {}}
+
+=== Query VM status ===
+
+ C: { "execute": "query-status" }
+ S: {
+        "return": {
+            "status": "running",
+            "singlestep": false,
+            "running": true
+        }
+    }
+
+=== Asynchronous message ===
+
+ S: { "event": "BLOCK_IO_ERROR",
+      "data": { "device": "ide0-hd1",
+                "operation": "write",
+                "action": "stop" },
+      "timestamp": { "seconds": 1265044230, "microseconds": 450486 } }
+
+== Development ==
+
+QMP being a core part of QEMU, all discussions happen on the [http://lists.nongnu.org/mailman/listinfo/qemu-devel qemu-devel] mailing list.
+
+== Trying it ==
+
+=== By hand ===
+
+1. Start QMP on a TCP socket, so that telnet can be used
+
+ # qemu [...] -qmp tcp:localhost:4444,server,wait=off
+
+2. Run telnet
+
+ $ telnet localhost 4444
+
+3. You should see QMP's greeting banner
+
+ {"QMP": {"version": {"qemu": {"micro": 0, "minor": 6, "major": 1}, "package": ""}, "capabilities": []}}
+
+4. Issue the ''qmp_capabilities'' command, so that QMP enters command mode
+
+ { "execute": "qmp_capabilities" }
+
+5. You can now issue commands. For example, to get a list of QMP supported commands, issue ''query-commands''
+
+ { "execute": "query-commands" }
+
+There's an optimization to this procedure in case you plan to use it often:
+
+1. Install programs ''socat'' and ''rlwrap''. If you're running Fedora, you can do
+
+ # yum install socat rlwrap
+
+2. Add the following sections to your QEMU config file (or create a ''qemu-qmp.conf'' one):
+
+ [chardev "qmp"]
+   backend = "socket"
+   path = "path to the QMP unix socket"
+   server = "on"
+   wait = "off"
+ [mon "qmp"]
+   mode = "control"
+   chardev = "qmp"
+   pretty = "on"
+
+3. Run QEMU
+
+ # qemu [...] -readconfig qemu-qmp.conf
+
+4. Run rlwrap
+
+ # rlwrap -C qmp socat STDIO UNIX:path-to-the-QMP-unix-socket
+
+You can now issue commands, rlwrap will give you readline support (including persistent history).
+
+=== qmp-shell script ===
+
+This script is available under the [http://git.qemu.org/?p=qemu.git;a=tree;f=scripts/qmp;hb=HEAD scripts/qmp/] directory in QEMU's source-tree. It automates a bit the testing work, as it can construct commands objects for you.
+
+1. Start QMP on a unix socket
+
+ # qemu [...] -qmp unix:./qmp-sock,server,wait=off
+
+2. Run the script
+
+ # qmp-shell ./qmp-sock
+
+3. You should get the following prompt
+
+ (QEMU)
+
+4. You can now issue commands. For example, let's add a new device
+
+ (QEMU) device_add driver=e1000 id=net1
+
+== Historic information ==
+
+* Luiz's QMP talk on KVM Forum 2010 can be found [http://www.linux-kvm.org/images/1/17/2010-forum-qmp-status-talk.pp.pdf here]
+* Old QMP page can be accessed [http://www.linux-kvm.org/index.php?title=MonitorProtocol&oldid=3100 here]
+
+[[Category:User documentation]]

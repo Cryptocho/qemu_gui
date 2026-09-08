@@ -4,17 +4,20 @@ import 'theme/arc_dark_theme.dart';
 import 'services/settings_service.dart';
 import 'services/qemu_service.dart';
 import 'services/vm_service.dart';
+import 'services/monitor_service.dart';
 import 'models/vm_config.dart';
 import 'views/home_view.dart';
 import 'views/settings_view.dart';
 import 'views/image_manager_view.dart';
+import 'views/monitor_view.dart';
 import 'views/vm_wizard_view.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final settingsService = SettingsService();
   final settings = await settingsService.loadSettings();
-  final vmService = VMService();
+  final monitorService = MonitorService();
+  final vmService = VMService(monitorService: monitorService);
   await vmService.loadVMs();
 
   runApp(
@@ -23,6 +26,7 @@ void main() async {
         Provider.value(value: settingsService),
         Provider.value(value: QemuService()),
         ChangeNotifierProvider.value(value: vmService),
+        ChangeNotifierProvider.value(value: monitorService),
       ],
       child: SettingsWrapper(
         initialSettings: settings,
@@ -86,6 +90,10 @@ class QemuGuiApp extends StatelessWidget {
         if (settings.name == '/wizard') {
           final vm = settings.arguments as VMConfig?;
           return MaterialPageRoute(builder: (context) => VMWizardView(existingVM: vm));
+        }
+        if (settings.name == '/monitor') {
+          final vm = settings.arguments as VMConfig?;
+          return MaterialPageRoute(builder: (context) => MonitorView(vm: vm!));
         }
         return null;
       },

@@ -314,6 +314,18 @@ class HomeView extends StatelessWidget {
                               visualDensity: VisualDensity.compact,
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
+                              iconSize: 22,
+                              icon: const Icon(Icons.monitor_heart),
+                              tooltip: 'Performance Monitor',
+                              onPressed: isRunning
+                                  ? () => Navigator.pushNamed(context, '/monitor', arguments: vm)
+                                  : null,
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
                               iconSize: 18,
                               icon: const Icon(Icons.receipt_long),
                               tooltip: 'Logs',

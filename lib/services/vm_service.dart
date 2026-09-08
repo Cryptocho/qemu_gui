@@ -3,12 +3,17 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/vm_config.dart';
+import 'monitor_service.dart';
+import 'qemu_service.dart';
 
 class VMService extends ChangeNotifier {
   static const _key = 'vms';
   List<VMConfig> _vms = [];
   final Map<String, Process> _runningProcesses = {};
   final Map<String, List<String>> _logs = {};
+  final MonitorService? _monitor;
+
+  VMService({MonitorService? monitorService}) : _monitor = monitorService;
 
   List<VMConfig> get vms => _vms;
 
@@ -55,6 +60,21 @@ class VMService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Stores a new configuration for an existing VM (matched by id) without
+  /// touching a running process, so edits to a running VM take effect on its
+  /// next start rather than killing it. If no VM with that id exists, it is
+  /// added.
+  Future<void> updateVM(VMConfig vm) async {
+    final index = _vms.indexWhere((element) => element.id == vm.id);
+    if (index == -1) {
+      _vms.add(vm);
+    } else {
+      _vms[index] = vm;
+    }
+    await saveVMs();
+    notifyListeners();
+  }
+
   Future<void> removeVM(String id) async {
     stopVM(id);
     _vms.removeWhere((element) => element.id == id);
@@ -64,6 +84,7 @@ class VMService extends ChangeNotifier {
 
   void registerProcess(String vmId, Process process, {String? command}) {
     _runningProcesses[vmId] = process;
+    _monitor?.attach(vmId, process.pid, QemuService.qmpSocketPath(vmId));
     if (command != null) {
       _addLog(vmId, 'Starting VM with command: $command');
     }
@@ -86,6 +107,7 @@ class VMService extends ChangeNotifier {
     process.exitCode.then((code) {
       _addLog(vmId, 'Process exited with code $code');
       _runningProcesses.remove(vmId);
+      _monitor?.detach(vmId);
       notifyListeners();
     });
   }
@@ -93,6 +115,7 @@ class VMService extends ChangeNotifier {
   void stopVM(String vmId) {
     _runningProcesses[vmId]?.kill();
     _runningProcesses.remove(vmId);
+    _monitor?.detach(vmId);
     notifyListeners();
   }
 }
