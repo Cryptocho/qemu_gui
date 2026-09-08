@@ -1,5 +1,5 @@
 pkgname=qemu_gui
-pkgver=0.1.2
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="A Flutter-based qemu manager"
 arch=('x86_64')
@@ -23,7 +23,7 @@ EOF
 
   install -d "${pkgdir}/usr/share/applications"
   echo "[Desktop Entry]
-Version=0.1.2
+Version=0.2.0
 Name=QEMU GUI
 Comment=Flutter-based QEMU manager
 Exec=/usr/bin/${pkgname} %U
